@@ -18,9 +18,11 @@ function normalizeRequiredRoles(roles: UserRole[] = []): UserRole[] {
 export function useRoles() {
   const { roles, hasRole, hasAnyRole, hasEveryRole } = useAuth();
 
-  // Log current roles for debugging
+  // Log current roles for debugging (development only)
   React.useEffect(() => {
-    console.log('Current user roles:', roles);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Current user roles:', roles);
+    }
   }, [roles]);
 
   const primaryRole = React.useMemo(() => roles[0] ?? 'holder', [roles]);

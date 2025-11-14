@@ -27,17 +27,25 @@ function isFormLike(body: unknown): body is FormData | URLSearchParams {
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  if (response.status === 204) {
-    return undefined as T;
+  if (response.status === 204 || response.status === 304) {
+    // No content responses - return empty object or undefined based on type
+    return {} as T;
   }
 
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      // If JSON parsing fails, return empty object
+      console.error('Failed to parse JSON response:', error);
+      return {} as T;
+    }
   }
 
+  // For non-JSON responses, return text as string
   const text = await response.text();
-  return text as unknown as T;
+  return text as T;
 }
 
 export async function apiFetch<T>(path: string, init: ApiFetchOptions = {}): Promise<T> {

@@ -85,6 +85,10 @@
     position: relative;
     overflow-x: hidden;
   }
+  body > *:not([style*="z-index: 0"]) {
+    position: relative;
+    z-index: 1;
+  }
   body::before,
   body::after {
     content: "";

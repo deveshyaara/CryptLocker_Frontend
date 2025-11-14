@@ -12,27 +12,117 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, Clock, ShieldCheck } from 'lucide-react';
+import { requestProof, getConnections } from '@/lib/api/holder';
+import { ApiError } from '@/lib/api/http';
+import type { Connection } from '@/types/api';
 
 export default function VerifierPage() {
   const { token } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [connections, setConnections] = React.useState<Connection[]>([]);
+  const [loadingConnections, setLoadingConnections] = React.useState(false);
+
+  React.useEffect(() => {
+    if (token) {
+      loadConnections();
+    }
+  }, [token]);
+
+  const loadConnections = React.useCallback(async () => {
+    if (!token) return;
+    try {
+      setLoadingConnections(true);
+      const data = await getConnections(token, 'verifier');
+      setConnections(data.filter((c) => c.state === 'active'));
+    } catch (error) {
+      console.error('Failed to load connections', error);
+    } finally {
+      setLoadingConnections(false);
+    }
+  }, [token]);
 
   const handleRequestProof = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!token) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please log in to request proofs.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // Simulate proof request
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const formData = new FormData(event.currentTarget);
+      const connectionId = String(formData.get('connection-id') ?? '').trim();
+      const requestedAttrsJson = String(formData.get('requested-attrs') ?? '{}').trim();
+      const predicatesJson = String(formData.get('predicates') ?? '{}').trim();
+      const comment = String(formData.get('comment') ?? '').trim();
+
+      if (!connectionId || !requestedAttrsJson) {
+        toast({
+          title: 'Missing required fields',
+          description: 'Please fill in all required fields.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      let requestedAttributes: Record<string, { name: string; restrictions?: unknown[] }>;
+      try {
+        requestedAttributes = JSON.parse(requestedAttrsJson);
+      } catch {
+        toast({
+          title: 'Invalid JSON',
+          description: 'Requested attributes must be valid JSON format.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      let requestedPredicates: Record<string, { name: string; p_type: string; p_value: number; restrictions?: unknown[] }> | undefined;
+      if (predicatesJson) {
+        try {
+          requestedPredicates = JSON.parse(predicatesJson);
+        } catch {
+          toast({
+            title: 'Invalid JSON',
+            description: 'Predicates must be valid JSON format.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
+      await requestProof(
+        token,
+        {
+          connection_id: connectionId,
+          requested_attributes: requestedAttributes,
+          requested_predicates: requestedPredicates,
+          comment: comment || undefined,
+        },
+        'verifier',
+      );
+
       toast({
         title: 'Proof request sent',
         description: 'The verification request has been sent to the holder.',
       });
+
+      // Reset form
+      event.currentTarget.reset();
     } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to request proof. Please try again.';
       toast({
         title: 'Failed to request proof',
-        description: 'Please try again.',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -112,25 +202,35 @@ export default function VerifierPage() {
                 <form onSubmit={handleRequestProof} className="space-y-4">
                   <div className="grid gap-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="connection-id">Holder Connection ID</Label>
-                      <Input
-                        id="connection-id"
-                        placeholder="Enter connection ID"
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="proof-name">Proof Request Name</Label>
-                      <Input
-                        id="proof-name"
-                        placeholder="e.g., Age Verification"
-                        required
-                      />
+                      <Label htmlFor="connection-id">Holder Connection</Label>
+                      {loadingConnections ? (
+                        <Input disabled placeholder="Loading connections..." />
+                      ) : (
+                        <select
+                          id="connection-id"
+                          name="connection-id"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          required
+                        >
+                          <option value="">Select a connection</option>
+                          {connections.map((conn) => (
+                            <option key={conn.connection_id} value={conn.connection_id}>
+                              {conn.their_label || conn.connection_id}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {connections.length === 0 && !loadingConnections && (
+                        <p className="text-xs text-muted-foreground">
+                          No active connections. Create a connection first.
+                        </p>
+                      )}
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="requested-attrs">Requested Attributes (JSON)</Label>
                       <Textarea
                         id="requested-attrs"
+                        name="requested-attrs"
                         placeholder='{"name": {"name": "name", "restrictions": []}, "age": {"name": "age", "restrictions": []}}'
                         rows={6}
                         required
@@ -140,11 +240,20 @@ export default function VerifierPage() {
                       <Label htmlFor="predicates">Predicates (Optional)</Label>
                       <Textarea
                         id="predicates"
+                        name="predicates"
                         placeholder='{"age": {"name": "age", "p_type": ">=", "p_value": 18}}'
                         rows={4}
                       />
                     </div>
-                    <Button type="submit" disabled={isSubmitting}>
+                    <div className="grid gap-2">
+                      <Label htmlFor="comment">Comment (Optional)</Label>
+                      <Input
+                        id="comment"
+                        name="comment"
+                        placeholder="Add a comment for the holder"
+                      />
+                    </div>
+                    <Button type="submit" disabled={isSubmitting || !token}>
                       {isSubmitting ? 'Sending request...' : 'Request Proof'}
                     </Button>
                   </div>

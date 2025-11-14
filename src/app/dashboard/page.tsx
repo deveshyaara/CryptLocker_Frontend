@@ -5,13 +5,15 @@ import Link from 'next/link';
 import { ArrowUpRight, Link2, QrCode, Shield, Users, Wallet, FileText, SearchCheck } from 'lucide-react';
 
 import { RoleGuard } from '@/components/common/role-guard';
+import { QRScanner } from '@/components/common/qr-scanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/context/auth-context';
 import { useRoles } from '@/hooks/use-roles';
-import { getConnections, getCredentials, getProofRequests } from '@/lib/api/holder';
+import { useToast } from '@/hooks/use-toast';
+import { getConnections, getCredentials, getProofRequests, acceptConnectionInvitation } from '@/lib/api/holder';
 import type { Connection, Credential, ProofRequest } from '@/types/api';
 
 type AggregatedStats = {
@@ -91,11 +93,13 @@ function summarizeStats(
 export default function DashboardPage() {
   const { token } = useAuth();
   const { hasAnyRole } = useRoles();
+  const { toast } = useToast();
   const [credentials, setCredentials] = React.useState<Credential[]>([]);
   const [connections, setConnections] = React.useState<Connection[]>([]);
   const [proofs, setProofs] = React.useState<ProofRequest[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [qrScannerOpen, setQrScannerOpen] = React.useState(false);
 
   const loadDashboardData = React.useCallback(async () => {
     if (!token) {
@@ -147,6 +151,40 @@ export default function DashboardPage() {
   const canManageCoreResources = hasAnyRole(['holder', 'admin']);
   const isIssuer = hasAnyRole(['issuer', 'admin']);
   const isVerifier = hasAnyRole(['verifier', 'admin']);
+
+  const handleQRScan = React.useCallback(async (decodedText: string) => {
+    if (!token) return;
+
+    try {
+      // Try to parse as JSON (connection invitation)
+      let invitationData;
+      try {
+        invitationData = JSON.parse(decodedText);
+      } catch {
+        // If not JSON, try as URL
+        if (decodedText.startsWith('http')) {
+          const response = await fetch(decodedText);
+          invitationData = await response.json();
+        } else {
+          throw new Error('Invalid QR code format');
+        }
+      }
+
+      // Accept connection invitation
+      await acceptConnectionInvitation(token, invitationData);
+      toast({
+        title: 'Connection accepted',
+        description: 'Successfully connected to the issuer.',
+      });
+      await loadDashboardData();
+    } catch (error) {
+      toast({
+        title: 'Failed to process QR code',
+        description: error instanceof Error ? error.message : 'Invalid QR code format',
+        variant: 'destructive',
+      });
+    }
+  }, [token, toast, loadDashboardData]);
 
   return (
     <RoleGuard allowedRoles={['holder', 'admin', 'issuer', 'verifier', 'viewer']}>
@@ -272,7 +310,7 @@ export default function DashboardPage() {
           <CardContent className="grid gap-4">
             {canManageCoreResources && (
               <>
-                <Button variant="default">
+                <Button variant="default" onClick={() => setQrScannerOpen(true)}>
                   <QrCode className="mr-2 h-4 w-4" />
                   Scan QR Code
                 </Button>
@@ -330,6 +368,11 @@ export default function DashboardPage() {
           {error}
         </div>
       ) : null}
+      <QRScanner
+        open={qrScannerOpen}
+        onClose={() => setQrScannerOpen(false)}
+        onScanSuccess={handleQRScan}
+      />
       </div>
     </RoleGuard>
   );

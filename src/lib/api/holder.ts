@@ -359,3 +359,46 @@ export async function getWalletDid(token: string, service: ApiService = 'holder'
     service,
   });
 }
+
+export async function issueCredential(
+  token: string,
+  payload: {
+    connection_id: string;
+    schema_id: string;
+    cred_def_id?: string;
+    attributes: Record<string, string>;
+    comment?: string;
+  },
+  service: ApiService = 'issuer',
+) {
+  return apiFetchJson<{ credential_exchange_id: string; message: string }>(
+    '/credentials/issue',
+    payload,
+    {
+      method: 'POST',
+      token,
+      service,
+    },
+  );
+}
+
+export async function requestProof(
+  token: string,
+  payload: {
+    connection_id: string;
+    requested_attributes: Record<string, { name: string; restrictions?: unknown[] }>;
+    requested_predicates?: Record<string, { name: string; p_type: string; p_value: number; restrictions?: unknown[] }>;
+    comment?: string;
+  },
+  service: ApiService = 'verifier',
+) {
+  return apiFetchJson<{ presentation_exchange_id: string; message: string }>(
+    '/proofs/request',
+    payload,
+    {
+      method: 'POST',
+      token,
+      service,
+    },
+  );
+}

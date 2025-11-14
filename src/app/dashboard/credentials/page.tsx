@@ -65,7 +65,9 @@ import {
     RefreshCw,
     Search,
     Trash2,
+    Upload,
 } from 'lucide-react';
+import { FileUpload } from '@/components/common/file-upload';
 
 function summarizeStatus(state?: string) {
     if (!state) {
@@ -120,6 +122,8 @@ export default function CredentialsPage() {
     const [offersSupported, setOffersSupported] = React.useState(true);
     const [acceptingOfferId, setAcceptingOfferId] = React.useState<string | null>(null);
     const [offersDialogOpen, setOffersDialogOpen] = React.useState(false);
+    const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
+    const [uploadingFile, setUploadingFile] = React.useState(false);
 
     const credentialsRequestRef = React.useRef(false);
 
@@ -351,13 +355,14 @@ export default function CredentialsPage() {
                                 <span>Add Credential</span>
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-2xl">
+                        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
                             <DialogHeader>
                                 <DialogTitle>Add a credential to your wallet</DialogTitle>
                                 <DialogDescription>
                                     Accept a pending credential offer or request a new one from a trusted issuer.
                                 </DialogDescription>
                             </DialogHeader>
+                            <div className="flex-1 overflow-y-auto min-h-0">
                             <Tabs defaultValue="offers" className="mt-2">
                                 <TabsList className="grid w-full grid-cols-2">
                                     <TabsTrigger value="offers">Pending offers</TabsTrigger>
@@ -440,27 +445,97 @@ export default function CredentialsPage() {
                                     )}
                                 </TabsContent>
                                 <TabsContent value="issuer" className="mt-4 space-y-4">
-                                    <div className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-                                        <p className="mb-2 font-medium text-foreground">Need a new credential?</p>
-                                        <p>
-                                            Visit your issuer&apos;s portal to request an offer, then return here to accept it.
-                                            If you&apos;re testing locally, you can open the issuer sandbox:
-                                        </p>
-                                        <div className="mt-3 flex items-center gap-2 text-xs">
-                                            <Input value={issuerConsoleUrl} readOnly className="font-mono" />
-                                            <Button
-                                                variant="outline"
-                                                onClick={() => {
-                                                    void navigator.clipboard.writeText(issuerConsoleUrl);
-                                                    toast({ description: 'Issuer URL copied to clipboard.' });
-                                                }}
-                                            >
-                                                <ClipboardCopy className="mr-2 h-4 w-4" /> Copy URL
-                                            </Button>
+                                    <div className="space-y-4">
+                                        <div className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
+                                            <p className="mb-2 font-medium text-foreground">Upload Document for Credential</p>
+                                            <p className="mb-3">
+                                                Upload a document that will be associated with your credential. The document will be stored securely in the database.
+                                            </p>
                                         </div>
-                                        <p className="mt-3 text-xs">
-                                            After requesting an offer, return to the <strong>Pending offers</strong> tab and press refresh.
-                                        </p>
+                                        
+                                        <FileUpload
+                                            label="Upload Document"
+                                            accept=".pdf,.txt,.json,.doc,.docx,.jpg,.png"
+                                            maxSize={10}
+                                            onFileSelect={setUploadedFile}
+                                        />
+
+                                        {uploadedFile && (
+                                            <div className="space-y-2">
+                                                <Button
+                                                    className="w-full"
+                                                    onClick={async () => {
+                                                        if (!token || !uploadedFile) return;
+                                                        
+                                                        setUploadingFile(true);
+                                                        try {
+                                                            const formData = new FormData();
+                                                            formData.append('file', uploadedFile);
+                                                            
+                                                            const response = await fetch('/api/db/upload', {
+                                                                method: 'POST',
+                                                                headers: {
+                                                                    'Authorization': `Bearer ${token}`,
+                                                                },
+                                                                body: formData,
+                                                            });
+                                                            
+                                                            if (!response.ok) {
+                                                                throw new Error('Upload failed');
+                                                            }
+                                                            
+                                                            const result = await response.json();
+                                                            toast({
+                                                                title: 'File uploaded successfully',
+                                                                description: 'Your document has been saved to the database.',
+                                                            });
+                                                            setUploadedFile(null);
+                                                        } catch (error) {
+                                                            toast({
+                                                                title: 'Upload failed',
+                                                                description: error instanceof Error ? error.message : 'Could not upload file',
+                                                                variant: 'destructive',
+                                                            });
+                                                        } finally {
+                                                            setUploadingFile(false);
+                                                        }
+                                                    }}
+                                                    disabled={uploadingFile}
+                                                >
+                                                    {uploadingFile ? (
+                                                        <>
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                            Uploading...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Upload className="mr-2 h-4 w-4" />
+                                                            Save Document to Database
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        <div className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
+                                            <p className="mb-2 font-medium text-foreground">Or Request from Issuer</p>
+                                            <p>
+                                                Visit your issuer&apos;s portal to request an offer, then return here to accept it.
+                                                If you&apos;re testing locally, you can open the issuer sandbox:
+                                            </p>
+                                            <div className="mt-3 flex items-center gap-2 text-xs">
+                                                <Input value={issuerConsoleUrl} readOnly className="font-mono" />
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        void navigator.clipboard.writeText(issuerConsoleUrl);
+                                                        toast({ description: 'Issuer URL copied to clipboard.' });
+                                                    }}
+                                                >
+                                                    <ClipboardCopy className="mr-2 h-4 w-4" /> Copy URL
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
                                     <Button variant="outline" onClick={() => void loadOffers()} disabled={offersLoading}>
                                         {offersLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -468,7 +543,8 @@ export default function CredentialsPage() {
                                     </Button>
                                 </TabsContent>
                             </Tabs>
-                            <DialogFooter>
+                            </div>
+                            <DialogFooter className="mt-4">
                                 <Button variant="ghost" onClick={() => setOffersDialogOpen(false)}>
                                     Close
                                 </Button>

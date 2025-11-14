@@ -47,14 +47,16 @@ function normalizeUser(user: User): User {
       )
     : [];
 
-  // Log for debugging role assignment
-  console.log('Normalizing user:', {
-    username: user.username,
-    originalRole: user.role,
-    originalRoles: user.roles,
-    normalizedRoles: roles,
-    primaryRole: roles[0],
-  });
+  // Log for debugging role assignment (development only)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Normalizing user:', {
+      username: user.username,
+      originalRole: user.role,
+      originalRoles: user.roles,
+      normalizedRoles: roles,
+      primaryRole: roles[0],
+    });
+  }
 
   return {
     ...user,
@@ -173,6 +175,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const normalizedUser = normalizeUser(response.user);
       setUser(normalizedUser);
       persistAuth(accessToken, selectedService);
+      
+      // Sync user to local database for file uploads and stats
+      if (accessToken && normalizedUser) {
+        try {
+          await fetch('/api/db/sync-user', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              username: normalizedUser.username,
+              email: normalizedUser.email,
+              full_name: normalizedUser.full_name,
+              role: normalizedUser.role || normalizedUser.roles?.[0],
+              user_id: normalizedUser.id,
+            }),
+          });
+        } catch (syncError) {
+          console.warn('Failed to sync user to local database:', syncError);
+        }
+      }
+      
       return { ...response, user: normalizedUser };
     },
     [],
@@ -181,7 +206,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = React.useCallback(
     async (payload: RegisterRequest, selectedService: ApiService = 'holder') => {
       const response = await registerUser(payload, selectedService);
-      await login(payload.username, payload.password, selectedService);
+      const loginResponse = await login(payload.username, payload.password, selectedService);
+      
+      // Sync user to local database for file uploads and stats
+      if (loginResponse.access_token && loginResponse.user) {
+        try {
+          await fetch('/api/db/sync-user', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${loginResponse.access_token}`,
+            },
+            body: JSON.stringify({
+              username: loginResponse.user.username,
+              email: loginResponse.user.email,
+              full_name: loginResponse.user.full_name,
+              role: loginResponse.user.role || payload.role,
+              user_id: loginResponse.user.id,
+            }),
+          });
+        } catch (syncError) {
+          console.warn('Failed to sync user to local database:', syncError);
+        }
+      }
+      
       return response;
     },
     [login],

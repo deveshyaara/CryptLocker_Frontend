@@ -69,23 +69,75 @@ export default function RegisterPage() {
       setErrorMessage(null);
       const service = resolveServiceForRole(selectedRole);
 
-      await register({
+      console.log('Registering user with service:', service, 'Role:', selectedRole);
+      
+      // Register with backend API
+      const response = await register({
         username,
         email,
         password,
         full_name: fullName || undefined,
         role: selectedRole,
       }, service);
+      
+      console.log('Registration successful:', response);
+      
+      // Also save to local database for file uploads and stats
+      try {
+        const dbResponse = await fetch('/api/db/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username,
+            email,
+            password, // Will be hashed on server
+            full_name: fullName || undefined,
+            role: selectedRole,
+          }),
+        });
+
+        if (dbResponse.ok) {
+          const dbResult = await dbResponse.json();
+          console.log('User saved to local database:', dbResult);
+          
+          // Note: User sync happens automatically after login in auth-context
+        }
+      } catch (dbError) {
+        console.warn('Failed to save to local database (non-critical):', dbError);
+        // Non-critical - backend API is primary
+      }
+      
       toast({
         title: 'Wallet created successfully!',
-        description: 'Welcome to CryptLocker.',
+        description: 'Your account has been created and saved to the database. Welcome to CryptLocker!',
       });
+      
+      // Small delay to show success message
+      await new Promise(resolve => setTimeout(resolve, 500));
       router.replace('/dashboard');
     } catch (error) {
-      const message =
-        error instanceof ApiError
-          ? error.message || 'Unable to create account.'
-          : 'Registration failed. Please try again later.';
+      console.error('Registration error:', error);
+      
+      let message = 'Registration failed. Please try again later.';
+      
+      if (error instanceof ApiError) {
+        if (error.status === 0) {
+          message = 'Cannot connect to the server. Please ensure the backend API is running and connected to a database.';
+        } else if (error.status === 400) {
+          message = error.message || 'Invalid registration data. Please check your information.';
+        } else if (error.status === 409) {
+          message = 'Username or email already exists. Please choose a different one.';
+        } else if (error.status === 500) {
+          message = 'Server error. The database may not be configured. Please contact support.';
+        } else {
+          message = error.message || `Registration failed (Error ${error.status}).`;
+        }
+      } else if (error instanceof Error) {
+        message = error.message;
+      }
+      
       setErrorMessage(message);
       toast({
         title: 'Registration failed',
