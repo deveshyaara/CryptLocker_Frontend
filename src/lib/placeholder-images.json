@@ -1,0 +1,46 @@
+{
+  "placeholderImages": [
+    {
+      "id": "user-avatar-1",
+      "description": "User avatar placeholder",
+      "imageUrl": "https://images.unsplash.com/photo-1521146764736-56c929d59c83?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxwZXJzb24lMjBmYWNlfGVufDB8fHx8MTc2MzAwMjIxMnww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person face"
+    },
+    {
+      "id": "org-logo-1",
+      "description": "Organization logo for MIT",
+      "imageUrl": "https://images.unsplash.com/photo-1590231204765-12b10cedb4fa?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHx1bml2ZXJzaXR5JTIwYnVpbGRpbmd8ZW58MHx8fHwxNzYzMDE1ODIzfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "university building"
+    },
+    {
+      "id": "org-logo-2",
+      "description": "Organization logo for a Tech Corp",
+      "imageUrl": "https://images.unsplash.com/photo-1560179707-f14e90ef3623?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxvZmZpY2UlMjBidWlsZGluZ3xlbnwwfHx8fDE3NjI5NjI0MzR8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "office building"
+    },
+    {
+      "id": "credential-icon-education",
+      "description": "Icon for education credentials",
+      "imageUrl": "https://images.unsplash.com/photo-1627556704302-624286467c65?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHxncmFkdWF0aW9uJTIwY2FwfGVufDB8fHx8MTc2Mjk4NDMyM3ww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "graduation cap"
+    },
+    {
+      "id": "credential-icon-employment",
+      "description": "Icon for employment credentials",
+      "imageUrl": "https://images.unsplash.com/photo-1691480150204-66dd1eb77391?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxicmllZmNhc2V8ZW58MHx8fHwxNzYzMDM4Mjk1fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "briefcase"
+    },
+    {
+      "id": "credential-icon-id",
+      "description": "Icon for ID credentials",
+      "imageUrl": "https://images.unsplash.com/photo-1587045930305-4875b26e8f25?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHxpZCUyMGNhcmR8ZW58MHx8fHwxNzYzMDIxNDY2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "id card"
+    },
+    {
+      "id": "empty-wallet-illustration",
+      "description": "Illustration for an empty wallet state",
+      "imageUrl": "https://images.unsplash.com/photo-1573376670774-4427757f7963?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxlbXB0eSUyMGJveHxlbnwwfHx8fDE3NjI5NTg5MDl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "empty box"
+    }
+  ]
+}
