@@ -15,6 +15,15 @@ export const API_BASE_URLS: Record<ApiService, string> = {
     process.env.NEXT_PUBLIC_VERIFIER_API_BASE_URL?.trim() || DEFAULT_BASE_URLS.verifier,
 };
 
+// Log API configuration in development
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  console.log('API Configuration:', {
+    holder: API_BASE_URLS.holder,
+    issuer: API_BASE_URLS.issuer,
+    verifier: API_BASE_URLS.verifier,
+  });
+}
+
 export function resolveApiUrl(service: ApiService, path: string): string {
   const baseUrl = API_BASE_URLS[service];
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;

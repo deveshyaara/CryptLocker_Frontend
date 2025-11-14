@@ -57,11 +57,26 @@ export async function apiFetch<T>(path: string, init: ApiFetchOptions = {}): Pro
     requestHeaders.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(url, {
-    ...rest,
-    headers: requestHeaders,
-    mode: 'cors',
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...rest,
+      headers: requestHeaders,
+      mode: 'cors',
+    });
+  } catch (networkError) {
+    // Handle network failures (CORS, connection refused, timeout, etc.)
+    const errorMessage = networkError instanceof Error 
+      ? networkError.message 
+      : 'Network request failed';
+    
+    console.error(`Network error for ${url}:`, errorMessage);
+    throw new ApiError(
+      0, 
+      `Unable to connect to the server. Please check your connection and ensure the API is running.`,
+      { detail: errorMessage, url }
+    );
+  }
 
   if (!response.ok) {
     let errorDetails: unknown;

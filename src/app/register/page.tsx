@@ -11,9 +11,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { ApiError } from '@/lib/api/http';
 import { useAuth } from '@/context/auth-context';
+import type { ApiService } from '@/lib/api/config';
+import type { UserRole } from '@/types/api';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -22,6 +25,18 @@ export default function RegisterPage() {
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = React.useState<UserRole>('holder');
+
+  const resolveServiceForRole = React.useCallback((role: UserRole): ApiService => {
+    switch (role) {
+      case 'issuer':
+        return 'issuer';
+      case 'verifier':
+        return 'verifier';
+      default:
+        return 'holder';
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!loading && token) {
@@ -52,12 +67,15 @@ export default function RegisterPage() {
     try {
       setIsSubmitting(true);
       setErrorMessage(null);
+      const service = resolveServiceForRole(selectedRole);
+
       await register({
         username,
         email,
         password,
         full_name: fullName || undefined,
-      });
+        role: selectedRole,
+      }, service);
       toast({
         title: 'Wallet created successfully!',
         description: 'Welcome to CryptLocker.',
@@ -114,6 +132,40 @@ export default function RegisterPage() {
               <div className="grid gap-2">
                 <Label htmlFor="full-name">Full Name</Label>
                 <Input id="full-name" name="full-name" placeholder="John Doe" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="role">Account Type</Label>
+                <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)}>
+                  <SelectTrigger id="role">
+                    <SelectValue placeholder="Select your role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="holder">
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">Holder</span>
+                        <span className="text-xs text-muted-foreground">Manage and store credentials</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="issuer">
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">Issuer</span>
+                        <span className="text-xs text-muted-foreground">Issue credentials to holders</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="verifier">
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">Verifier</span>
+                        <span className="text-xs text-muted-foreground">Request and verify proofs</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="admin">
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">Admin</span>
+                        <span className="text-xs text-muted-foreground">Full system access</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="password">Password</Label>

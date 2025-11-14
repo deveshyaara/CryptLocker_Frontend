@@ -1,9 +1,25 @@
+export type UserRole =
+  | 'admin'
+  | 'holder'
+  | 'issuer'
+  | 'verifier'
+  | 'viewer'
+  | 'support'
+  | (string & {});
+
 export interface User {
   id: number;
   username: string;
   email: string;
   full_name?: string;
+  did?: string;
+  wallet_id?: string;
+  is_active?: boolean;
   created_at?: string;
+  updated_at?: string;
+  role?: UserRole;
+  roles?: UserRole[];
+  permissions?: string[];
 }
 
 export interface LoginResponse {
@@ -17,6 +33,7 @@ export interface RegisterRequest {
   email: string;
   password: string;
   full_name?: string;
+  role?: UserRole;
 }
 
 export interface RegisterResponse extends User {}

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { RoleGuard } from '@/components/common/role-guard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/context/auth-context';
+import { useRoles } from '@/hooks/use-roles';
 import { useToast } from '@/hooks/use-toast';
 import { getProofRequests, sendProofPresentation } from '@/lib/api/holder';
 import { ApiError } from '@/lib/api/http';
@@ -65,6 +67,7 @@ function getStateVariant(state: string) {
 
 export default function ProofsPage() {
     const { token } = useAuth();
+    const { hasAnyRole } = useRoles();
     const { toast } = useToast();
 
     const [proofs, setProofs] = React.useState<ProofRequest[]>([]);
@@ -73,6 +76,8 @@ export default function ProofsPage() {
     const [selectedProof, setSelectedProof] = React.useState<ProofRequest | null>(null);
     const [detailsOpen, setDetailsOpen] = React.useState(false);
     const [presentingId, setPresentingId] = React.useState<string | null>(null);
+
+    const canRespondToProofs = hasAnyRole(['holder', 'admin', 'verifier']);
 
     const loadProofs = React.useCallback(async () => {
         if (!token) {
@@ -103,6 +108,11 @@ export default function ProofsPage() {
                 toast({ description: 'You must be logged in to respond to proof requests.', variant: 'destructive' });
                 return;
             }
+
+            if (!hasAnyRole(['holder', 'admin', 'verifier'])) {
+                toast({ description: 'You do not have permission to respond to proof requests.', variant: 'destructive' });
+                return;
+            }
             try {
                 setPresentingId(proofId);
                 await sendProofPresentation(token, proofId, {
@@ -120,11 +130,12 @@ export default function ProofsPage() {
                 setPresentingId(null);
             }
         },
-        [token, toast, loadProofs],
+        [token, toast, loadProofs, hasAnyRole],
     );
 
     return (
-        <div className="flex h-full flex-col">
+        <RoleGuard allowedRoles={['holder', 'admin', 'verifier']}>
+            <div className="flex h-full flex-col">
             <header className="mb-6 flex flex-wrap items-center gap-3">
                 <div>
                     <h1 className="font-headline text-3xl font-bold">Proof Requests</h1>
@@ -208,7 +219,7 @@ export default function ProofsPage() {
                                         </ul>
                                     </div>
                                 </CardContent>
-                                <CardFooter className="flex items-center gap-2 border-t p-4">
+                                <CardFooter className="flex flex-col gap-2 border-t p-4 sm:flex-row sm:items-center">
                                     <Dialog open={detailsOpen && selectedProof?.presentation_exchange_id === proof.presentation_exchange_id} onOpenChange={(open) => {
                                         setSelectedProof(open ? proof : null);
                                         setDetailsOpen(open);
@@ -293,7 +304,8 @@ export default function ProofsPage() {
                                     <Button
                                         className="flex-1"
                                         onClick={() => void handlePresentProof(proof.presentation_exchange_id)}
-                                        disabled={presentingId === proof.presentation_exchange_id}
+                                        disabled={presentingId === proof.presentation_exchange_id || !canRespondToProofs}
+                                        title={!canRespondToProofs ? 'You do not have permission to respond to proof requests.' : undefined}
                                     >
                                         {presentingId === proof.presentation_exchange_id ? (
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -302,12 +314,18 @@ export default function ProofsPage() {
                                         )}
                                         Present proof
                                     </Button>
+                                    {!canRespondToProofs ? (
+                                        <p className="w-full text-xs text-muted-foreground sm:w-auto">
+                                            Contact an administrator to gain permission to respond to proof requests.
+                                        </p>
+                                    ) : null}
                                 </CardFooter>
                             </Card>
                         );
                     })}
                 </div>
             )}
-        </div>
+            </div>
+        </RoleGuard>
     );
 }

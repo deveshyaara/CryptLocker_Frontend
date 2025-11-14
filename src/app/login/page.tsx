@@ -11,17 +11,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { ApiError } from '@/lib/api/http';
 import { useAuth } from '@/context/auth-context';
+import type { ApiService } from '@/lib/api/config';
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { login, token, loading } = useAuth();
+  const { login, token, loading, service: activeService } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [selectedService, setSelectedService] = React.useState<ApiService>(activeService);
+
+  React.useEffect(() => {
+    setSelectedService(activeService);
+  }, [activeService]);
 
   React.useEffect(() => {
     if (!loading && token) {
@@ -44,7 +51,7 @@ export default function LoginPage() {
     try {
       setIsSubmitting(true);
       setErrorMessage(null);
-      await login(username, password);
+      await login(username, password, selectedService);
       toast({
         title: 'Login successful',
         description: 'Welcome back to your wallet.',
@@ -72,7 +79,13 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <Logo className="mb-4 justify-center" href="#" />
           <CardTitle className="font-headline text-2xl">Welcome Back</CardTitle>
-          <CardDescription>Enter your credentials to access your wallet.</CardDescription>
+          <CardDescription>
+            Enter your credentials to access your wallet.
+            <br />
+            <span className="text-xs text-muted-foreground">
+              Your role (Holder, Issuer, Verifier, or Admin) is determined by your account.
+            </span>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -103,6 +116,22 @@ export default function LoginPage() {
                   required
                 />
               </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="account-type">Account Type</Label>
+                  <Select
+                    value={selectedService}
+                    onValueChange={(value) => setSelectedService(value as ApiService)}
+                  >
+                    <SelectTrigger id="account-type">
+                      <SelectValue placeholder="Select account type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="holder">Holder</SelectItem>
+                      <SelectItem value="issuer">Issuer</SelectItem>
+                      <SelectItem value="verifier">Verifier</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               <div className="flex items-center space-x-2">
                 <Checkbox id="remember-me" />
                 <Label htmlFor="remember-me" className="text-sm font-normal">Remember me</Label>

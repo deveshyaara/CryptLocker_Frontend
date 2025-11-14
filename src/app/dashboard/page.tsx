@@ -2,13 +2,15 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Link2, QrCode, Shield, Users, Wallet } from 'lucide-react';
+import { ArrowUpRight, Link2, QrCode, Shield, Users, Wallet, FileText, SearchCheck } from 'lucide-react';
 
+import { RoleGuard } from '@/components/common/role-guard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/context/auth-context';
+import { useRoles } from '@/hooks/use-roles';
 import { getConnections, getCredentials, getProofRequests } from '@/lib/api/holder';
 import type { Connection, Credential, ProofRequest } from '@/types/api';
 
@@ -88,6 +90,7 @@ function summarizeStats(
 
 export default function DashboardPage() {
   const { token } = useAuth();
+  const { hasAnyRole } = useRoles();
   const [credentials, setCredentials] = React.useState<Credential[]>([]);
   const [connections, setConnections] = React.useState<Connection[]>([]);
   const [proofs, setProofs] = React.useState<ProofRequest[]>([]);
@@ -141,8 +144,13 @@ export default function DashboardPage() {
     [connections],
   );
 
+  const canManageCoreResources = hasAnyRole(['holder', 'admin']);
+  const isIssuer = hasAnyRole(['issuer', 'admin']);
+  const isVerifier = hasAnyRole(['verifier', 'admin']);
+
   return (
-    <div className="flex flex-col gap-6">
+    <RoleGuard allowedRoles={['holder', 'admin', 'issuer', 'verifier', 'viewer']}>
+      <div className="flex flex-col gap-6">
       <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -262,22 +270,58 @@ export default function DashboardPage() {
             <CardDescription>Perform common tasks with a single click.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
-            <Button>
-              <QrCode className="mr-2 h-4 w-4" />
-              Scan QR Code
-            </Button>
-            <Button variant="secondary" asChild>
-              <Link href="/dashboard/credentials">
-                <Wallet className="mr-2 h-4 w-4" />
-                View All Credentials
-              </Link>
-            </Button>
-            <Button variant="secondary" asChild>
-              <Link href="/dashboard/connections">
-                <Users className="mr-2 h-4 w-4" />
-                Manage Connections
-              </Link>
-            </Button>
+            {canManageCoreResources && (
+              <>
+                <Button variant="default">
+                  <QrCode className="mr-2 h-4 w-4" />
+                  Scan QR Code
+                </Button>
+                <Button variant="secondary" asChild>
+                  <Link href="/dashboard/credentials">
+                    <Wallet className="mr-2 h-4 w-4" />
+                    View All Credentials
+                  </Link>
+                </Button>
+                <Button variant="secondary" asChild>
+                  <Link href="/dashboard/connections">
+                    <Users className="mr-2 h-4 w-4" />
+                    Manage Connections
+                  </Link>
+                </Button>
+              </>
+            )}
+            {isIssuer && (
+              <>
+                <Button variant="default" asChild>
+                  <Link href="/dashboard/issuer">
+                    <FileText className="mr-2 h-4 w-4" />
+                    Issue Credential
+                  </Link>
+                </Button>
+                <Button variant="secondary" asChild>
+                  <Link href="/dashboard/connections">
+                    <Users className="mr-2 h-4 w-4" />
+                    Manage Connections
+                  </Link>
+                </Button>
+              </>
+            )}
+            {isVerifier && (
+              <>
+                <Button variant="default" asChild>
+                  <Link href="/dashboard/verifier">
+                    <SearchCheck className="mr-2 h-4 w-4" />
+                    Request Verification
+                  </Link>
+                </Button>
+                <Button variant="secondary" asChild>
+                  <Link href="/dashboard/proofs">
+                    <Shield className="mr-2 h-4 w-4" />
+                    View Proof Requests
+                  </Link>
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -286,6 +330,7 @@ export default function DashboardPage() {
           {error}
         </div>
       ) : null}
-    </div>
+      </div>
+    </RoleGuard>
   );
 }

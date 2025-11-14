@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/auth-context';
 import { useDashboard } from '@/context/dashboard-context';
+import { useRoles } from '@/hooks/use-roles';
 import { formatDistanceToNow } from 'date-fns';
 import type { Notification } from '@/types/api';
 import { Separator } from '../ui/separator';
@@ -62,6 +63,7 @@ export function AppHeader() {
     notificationsLoading,
     markAllNotificationsAsRead,
   } = useDashboard();
+  const { primaryRole, hasAnyRole } = useRoles();
 
   const unreadCount = React.useMemo(
     () => notifications.filter((item) => !item.is_read).length,
@@ -175,6 +177,11 @@ export function AppHeader() {
                 {user?.email ? (
                   <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                 ) : null}
+                {primaryRole ? (
+                  <p className="text-xs font-medium uppercase tracking-wide text-primary/80">
+                    {primaryRole}
+                  </p>
+                ) : null}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -183,11 +190,13 @@ export function AppHeader() {
                 <Home className="mr-2" /> Dashboard
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard/settings">
-                <Settings className="mr-2" /> Settings
-              </Link>
-            </DropdownMenuItem>
+            {hasAnyRole(['admin', 'holder']) ? (
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings">
+                  <Settings className="mr-2" /> Settings
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem asChild>
               <Link href="/help">
                 <LifeBuoy className="mr-2" /> Help &amp; Support

@@ -13,6 +13,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { RoleGuard } from '@/components/common/role-guard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +38,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/auth-context';
+import { useRoles } from '@/hooks/use-roles';
 import { useToast } from '@/hooks/use-toast';
 import {
     acceptConnectionInvitation,
@@ -84,6 +86,7 @@ function getStatusVariant(state?: string) {
 
 export default function ConnectionsPage() {
     const { token } = useAuth();
+    const { hasAnyRole } = useRoles();
     const { toast } = useToast();
 
     const [connections, setConnections] = React.useState<Connection[]>([]);
@@ -165,6 +168,11 @@ export default function ConnectionsPage() {
             return;
         }
 
+        if (!hasAnyRole(['holder', 'admin', 'issuer'])) {
+            toast({ description: 'You do not have permission to create invitations.', variant: 'destructive' });
+            return;
+        }
+
         try {
             setCreatingInvitation(true);
             const invitation = await createConnectionInvitation(token, {
@@ -182,11 +190,16 @@ export default function ConnectionsPage() {
         } finally {
             setCreatingInvitation(false);
         }
-    }, [token, createAlias, multiUse, loadConnections, toast]);
+    }, [token, createAlias, multiUse, loadConnections, toast, hasAnyRole]);
 
     const handleAcceptInvitation = React.useCallback(async () => {
         if (!token) {
             toast({ description: 'You must be logged in to accept an invitation.', variant: 'destructive' });
+            return;
+        }
+
+        if (!hasAnyRole(['holder', 'admin', 'issuer'])) {
+            toast({ description: 'You do not have permission to accept invitations.', variant: 'destructive' });
             return;
         }
 
@@ -226,12 +239,17 @@ export default function ConnectionsPage() {
         } finally {
             setAcceptingInvitation(false);
         }
-    }, [token, invitationUrl, invitationJson, toast, resetInvitationState, loadConnections]);
+    }, [token, invitationUrl, invitationJson, toast, resetInvitationState, loadConnections, hasAnyRole]);
 
     const handleDeleteConnection = React.useCallback(
         async (connectionId: string) => {
             if (!token) {
                 toast({ description: 'You must be logged in to remove a connection.', variant: 'destructive' });
+                return;
+            }
+
+            if (!hasAnyRole(['holder', 'admin', 'issuer'])) {
+                toast({ description: 'You do not have permission to remove this connection.', variant: 'destructive' });
                 return;
             }
 
@@ -245,11 +263,14 @@ export default function ConnectionsPage() {
                 toast({ description: message, variant: 'destructive' });
             }
         },
-        [token, toast, loadConnections],
+        [token, toast, loadConnections, hasAnyRole],
     );
 
+    const canManageConnections = hasAnyRole(['holder', 'admin', 'issuer']);
+
     return (
-        <div className="flex h-full flex-col">
+        <RoleGuard allowedRoles={['holder', 'admin', 'issuer']}>
+            <div className="flex h-full flex-col">
             <header className="mb-6 flex flex-wrap items-center gap-3">
                 <div>
                     <h1 className="font-headline text-3xl font-bold">My Connections</h1>
@@ -310,11 +331,11 @@ export default function ConnectionsPage() {
                                         </div>
                                         <Switch checked={multiUse} onCheckedChange={setMultiUse} aria-label="Toggle multi use" />
                                     </div>
-                                    <Button
-                                        className="w-full"
-                                        onClick={() => void handleCreateInvitation()}
-                                        disabled={creatingInvitation}
-                                    >
+                                        <Button
+                                            className="w-full"
+                                            onClick={() => void handleCreateInvitation()}
+                                            disabled={creatingInvitation || !canManageConnections}
+                                        >
                                         {creatingInvitation ? (
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                         ) : (
@@ -520,7 +541,7 @@ export default function ConnectionsPage() {
                                 </Dialog>
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                        <Button variant="outline" size="icon">
+                                        <Button variant="outline" size="icon" disabled={!canManageConnections}>
                                             <Trash2 className="h-4 w-4" />
                                             <span className="sr-only">Remove connection</span>
                                         </Button>
@@ -534,7 +555,10 @@ export default function ConnectionsPage() {
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => void handleDeleteConnection(connection.connection_id)}>
+                                            <AlertDialogAction
+                                                onClick={() => void handleDeleteConnection(connection.connection_id)}
+                                                disabled={!canManageConnections}
+                                            >
                                                 Remove connection
                                             </AlertDialogAction>
                                         </AlertDialogFooter>
@@ -545,6 +569,7 @@ export default function ConnectionsPage() {
                     ))}
                 </div>
             )}
-        </div>
+            </div>
+        </RoleGuard>
     );
 }

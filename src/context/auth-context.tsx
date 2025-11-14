@@ -9,37 +9,112 @@ import {
   loginUser,
   registerUser,
 } from '@/lib/api/holder';
-import type { LoginResponse, RegisterRequest, RegisterResponse, User } from '@/types/api';
+import type { ApiService } from '@/lib/api/config';
+import type {
+  LoginResponse,
+  RegisterRequest,
+  RegisterResponse,
+  User,
+  UserRole,
+} from '@/types/api';
 
 const TOKEN_STORAGE_KEY = 'cryptlocker.accessToken';
+const SERVICE_STORAGE_KEY = 'cryptlocker.apiService';
+
+const DEFAULT_ROLE: UserRole = 'holder';
+
+function extractRoles(input: Partial<Pick<User, 'roles' | 'role'>>): UserRole[] {
+  const rawRoles = [
+    ...(Array.isArray(input.roles) ? input.roles : []),
+    ...(input.role ? [input.role] : []),
+  ]
+    .map((role) => (typeof role === 'string' ? role.trim().toLowerCase() : ''))
+    .filter((role): role is string => role.length > 0);
+
+  const uniqueRoles = Array.from(new Set(rawRoles)) as UserRole[];
+  return uniqueRoles.length > 0 ? uniqueRoles : [DEFAULT_ROLE];
+}
+
+function normalizeUser(user: User): User {
+  const roles = extractRoles(user);
+  const permissions = Array.isArray(user.permissions)
+    ? Array.from(
+        new Set(
+          user.permissions
+            .map((item) => (typeof item === 'string' ? item.trim() : String(item)).toLowerCase())
+            .filter((item) => item.length > 0),
+        ),
+      )
+    : [];
+
+  // Log for debugging role assignment
+  console.log('Normalizing user:', {
+    username: user.username,
+    originalRole: user.role,
+    originalRoles: user.roles,
+    normalizedRoles: roles,
+    primaryRole: roles[0],
+  });
+
+  return {
+    ...user,
+    role: roles[0] ?? DEFAULT_ROLE,
+    roles,
+    permissions,
+  };
+}
 
 export interface AuthContextValue {
   user: User | null;
   token: string | null;
+  service: ApiService;
   loading: boolean;
-  login: (username: string, password: string) => Promise<LoginResponse>;
-  register: (payload: RegisterRequest) => Promise<RegisterResponse>;
+  login: (username: string, password: string, service?: ApiService) => Promise<LoginResponse>;
+  register: (payload: RegisterRequest, service?: ApiService) => Promise<RegisterResponse>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
+  roles: UserRole[];
+  hasRole: (role: UserRole) => boolean;
+  hasAnyRole: (roles?: UserRole[]) => boolean;
+  hasEveryRole: (roles?: UserRole[]) => boolean;
 }
 
 const AuthContext = React.createContext<AuthContextValue | undefined>(undefined);
 
-function getStoredToken(): string | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
+interface StoredAuth {
+  token: string | null;
+  service: ApiService;
 }
 
-function persistToken(token: string | null) {
+function getStoredAuth(): StoredAuth {
+  if (typeof window === 'undefined') {
+    return { token: null, service: 'holder' };
+  }
+
+  const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const storedService = localStorage.getItem(SERVICE_STORAGE_KEY) as ApiService | null;
+
+  return {
+    token: storedToken,
+    service: storedService ?? 'holder',
+  };
+}
+
+function persistAuth(token: string | null, service: ApiService | null) {
   if (typeof window === 'undefined') {
     return;
   }
+
   if (token) {
     localStorage.setItem(TOKEN_STORAGE_KEY, token);
   } else {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
+
+  if (service) {
+    localStorage.setItem(SERVICE_STORAGE_KEY, service);
+  } else {
+    localStorage.removeItem(SERVICE_STORAGE_KEY);
   }
 }
 
@@ -47,9 +122,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = React.useState<string | null>(null);
   const [user, setUser] = React.useState<User | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [service, setService] = React.useState<ApiService>('holder');
 
   const syncProfile = React.useCallback(
-    async (accessToken: string | null) => {
+    async (accessToken: string | null, activeService: ApiService) => {
       if (!accessToken) {
         setUser(null);
         setLoading(false);
@@ -57,13 +133,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const profile = await getCurrentUser(accessToken);
-        setUser(profile);
+        const profile = await getCurrentUser(accessToken, activeService);
+        setUser(normalizeUser(profile));
       } catch (error) {
         console.error('Failed to load user profile', error);
+
+        // Only clear token if it's an authentication error (401/403)
+        // Keep token for network errors to allow retry
+        if (error && typeof error === 'object' && 'status' in error) {
+          const status = (error as { status: number }).status;
+          if (status === 401 || status === 403) {
+            setToken(null);
+            setService('holder');
+            persistAuth(null, null);
+          }
+        }
+
         setUser(null);
-        setToken(null);
-        persistToken(null);
       } finally {
         setLoading(false);
       }
@@ -72,27 +158,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   React.useEffect(() => {
-    const storedToken = getStoredToken();
-    setToken(storedToken);
-    syncProfile(storedToken);
+    const storedAuth = getStoredAuth();
+    setToken(storedAuth.token);
+    setService(storedAuth.service);
+    syncProfile(storedAuth.token, storedAuth.service);
   }, [syncProfile]);
 
   const login = React.useCallback(
-    async (username: string, password: string) => {
-      const response = await loginUser(username, password);
+    async (username: string, password: string, selectedService: ApiService = 'holder') => {
+      const response = await loginUser(username, password, selectedService);
       const accessToken = response.access_token;
       setToken(accessToken);
-      setUser(response.user);
-      persistToken(accessToken);
-      return response;
+      setService(selectedService);
+      const normalizedUser = normalizeUser(response.user);
+      setUser(normalizedUser);
+      persistAuth(accessToken, selectedService);
+      return { ...response, user: normalizedUser };
     },
     [],
   );
 
   const register = React.useCallback(
-    async (payload: RegisterRequest) => {
-      const response = await registerUser(payload);
-      await login(payload.username, payload.password);
+    async (payload: RegisterRequest, selectedService: ApiService = 'holder') => {
+      const response = await registerUser(payload, selectedService);
+      await login(payload.username, payload.password, selectedService);
       return response;
     },
     [login],
@@ -101,7 +190,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = React.useCallback(() => {
     setToken(null);
     setUser(null);
-    persistToken(null);
+    setService('holder');
+    persistAuth(null, null);
   }, []);
 
   const refreshProfile = React.useCallback(async () => {
@@ -111,17 +201,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const profile = await getCurrentUser(token);
-      setUser(profile);
+      const profile = await getCurrentUser(token, service);
+      setUser(normalizeUser(profile));
     } catch (error) {
       console.error('Failed to refresh user profile', error);
       logout();
     }
-  }, [logout, token]);
+  }, [logout, token, service]);
+
+  const roles = React.useMemo<UserRole[]>(() => user?.roles ?? [], [user]);
+
+  const hasRole = React.useCallback(
+    (role: UserRole) => {
+      if (!role) {
+        return false;
+      }
+      const normalized = role.toString().trim().toLowerCase() as UserRole;
+      return roles.includes(normalized);
+    },
+    [roles],
+  );
+
+  const hasAnyRole = React.useCallback(
+    (requiredRoles: UserRole[] = []) => {
+      if (!requiredRoles || requiredRoles.length === 0) {
+        return true;
+      }
+      return requiredRoles.some((required) => hasRole(required));
+    },
+    [hasRole],
+  );
+
+  const hasEveryRole = React.useCallback(
+    (requiredRoles: UserRole[] = []) => {
+      if (!requiredRoles || requiredRoles.length === 0) {
+        return true;
+      }
+      return requiredRoles.every((required) => hasRole(required));
+    },
+    [hasRole],
+  );
 
   const value = React.useMemo<AuthContextValue>(
-    () => ({ user, token, loading, login, register, logout, refreshProfile }),
-    [user, token, loading, login, register, logout, refreshProfile],
+    () => ({
+      user,
+      token,
+      service,
+      loading,
+      login,
+      register,
+      logout,
+      refreshProfile,
+      roles,
+      hasRole,
+      hasAnyRole,
+      hasEveryRole,
+    }),
+    [
+      user,
+      token,
+      service,
+      loading,
+      login,
+      register,
+      logout,
+      refreshProfile,
+      roles,
+      hasRole,
+      hasAnyRole,
+      hasEveryRole,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

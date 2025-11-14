@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { RoleGuard } from '@/components/common/role-guard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,6 +44,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/context/auth-context';
+import { useRoles } from '@/hooks/use-roles';
 import { useToast } from '@/hooks/use-toast';
 import {
     acceptCredentialOffer,
@@ -100,11 +102,13 @@ function getStatusBadgeVariant(status: string) {
 }
 
 export default function CredentialsPage() {
-    const { token } = useAuth();
+    const { token, service } = useAuth();
+    const { hasAnyRole } = useRoles();
     const { toast } = useToast();
 
     const [credentials, setCredentials] = React.useState<Credential[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [isRefreshing, setIsRefreshing] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [search, setSearch] = React.useState('');
     const [selectedCredential, setSelectedCredential] = React.useState<Credential | null>(null);
@@ -117,27 +121,75 @@ export default function CredentialsPage() {
     const [acceptingOfferId, setAcceptingOfferId] = React.useState<string | null>(null);
     const [offersDialogOpen, setOffersDialogOpen] = React.useState(false);
 
-    const loadCredentials = React.useCallback(async () => {
-        if (!token) {
-            setCredentials([]);
-            setLoading(false);
-            return;
-        }
-        try {
-            setLoading(true);
-            setError(null);
-            const data = await getCredentials(token);
-            setCredentials(data ?? []);
-        } catch (err) {
-            console.error('Failed to fetch credentials', err);
-            setError(err instanceof Error ? err.message : 'Unable to load credentials');
-        } finally {
-            setLoading(false);
-        }
-    }, [token]);
+    const credentialsRequestRef = React.useRef(false);
+
+    const loadCredentials = React.useCallback(
+        async ({ silent = false }: { silent?: boolean } = {}) => {
+            if (!token) {
+                setCredentials([]);
+                setError(null);
+                if (silent) {
+                    setIsRefreshing(false);
+                } else {
+                    setLoading(false);
+                }
+                return;
+            }
+
+            if (credentialsRequestRef.current) {
+                return;
+            }
+
+            credentialsRequestRef.current = true;
+            if (silent) {
+                setIsRefreshing(true);
+            } else {
+                setLoading(true);
+            }
+
+            try {
+                setError(null);
+                const data = await getCredentials(token, service);
+                setCredentials(data ?? []);
+            } catch (err) {
+                console.error('Failed to fetch credentials', err);
+                setError(err instanceof Error ? err.message : 'Unable to load credentials');
+            } finally {
+                credentialsRequestRef.current = false;
+                if (silent) {
+                    setIsRefreshing(false);
+                } else {
+                    setLoading(false);
+                }
+            }
+        },
+        [token, service],
+    );
 
     React.useEffect(() => {
         void loadCredentials();
+    }, [loadCredentials]);
+
+    React.useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const refreshIfVisible = () => {
+            if (document.visibilityState === 'visible') {
+                void loadCredentials({ silent: true });
+            }
+        };
+
+        const intervalId = window.setInterval(refreshIfVisible, 15000);
+        window.addEventListener('focus', refreshIfVisible);
+        document.addEventListener('visibilitychange', refreshIfVisible);
+
+        return () => {
+            window.clearInterval(intervalId);
+            window.removeEventListener('focus', refreshIfVisible);
+            document.removeEventListener('visibilitychange', refreshIfVisible);
+        };
     }, [loadCredentials]);
 
     const loadOffers = React.useCallback(async () => {
@@ -148,7 +200,7 @@ export default function CredentialsPage() {
         try {
             setOffersLoading(true);
             setOffersError(null);
-            const data = await getCredentialOffers(token);
+            const data = await getCredentialOffers(token, service);
             setOffers(data ?? []);
             setOffersSupported(true);
         } catch (err) {
@@ -162,7 +214,7 @@ export default function CredentialsPage() {
         } finally {
             setOffersLoading(false);
         }
-    }, [token]);
+    }, [token, service]);
 
     const filteredCredentials = React.useMemo(() => {
         const query = search.trim().toLowerCase();
@@ -190,17 +242,22 @@ export default function CredentialsPage() {
                 toast({ description: 'You must be logged in to remove a credential.', variant: 'destructive' });
                 return;
             }
+
+            if (!hasAnyRole(['holder', 'admin'])) {
+                toast({ description: 'You do not have permission to remove credentials.', variant: 'destructive' });
+                return;
+            }
             try {
-                await deleteCredential(token, credentialId);
+                await deleteCredential(token, credentialId, service);
                 toast({ description: 'Credential deleted.' });
-                await loadCredentials();
+                await loadCredentials({ silent: true });
             } catch (err) {
                 console.error('Failed to delete credential', err);
                 const message = err instanceof ApiError ? err.message : 'Unable to delete credential.';
                 toast({ description: message, variant: 'destructive' });
             }
         },
-        [token, toast, loadCredentials],
+        [token, service, toast, loadCredentials, hasAnyRole],
     );
 
     const openCredentialDetails = React.useCallback(
@@ -212,7 +269,7 @@ export default function CredentialsPage() {
             }
 
             try {
-                const detailed = await getCredential(token, credential.credential_id);
+                const detailed = await getCredential(token, credential.credential_id, service);
                 setSelectedCredential(detailed ?? credential);
             } catch (err) {
                 console.warn('Unable to fetch credential details', err);
@@ -221,7 +278,7 @@ export default function CredentialsPage() {
                 setDetailsOpen(true);
             }
         },
-        [token],
+        [token, service],
     );
 
     const handleAcceptOffer = React.useCallback(
@@ -230,11 +287,16 @@ export default function CredentialsPage() {
                 toast({ description: 'You must be logged in to accept credential offers.', variant: 'destructive' });
                 return;
             }
+
+            if (!hasAnyRole(['holder', 'admin'])) {
+                toast({ description: 'You do not have permission to accept credential offers.', variant: 'destructive' });
+                return;
+            }
             try {
                 setAcceptingOfferId(offerId);
-                await acceptCredentialOffer(token, offerId);
+                await acceptCredentialOffer(token, offerId, service);
                 toast({ description: 'Credential offer accepted.' });
-                await loadCredentials();
+                await loadCredentials({ silent: true });
                 await loadOffers();
             } catch (err) {
                 console.error('Failed to accept credential offer', err);
@@ -244,13 +306,15 @@ export default function CredentialsPage() {
                 setAcceptingOfferId(null);
             }
         },
-        [token, toast, loadCredentials, loadOffers],
+        [token, service, toast, loadCredentials, loadOffers, hasAnyRole],
     );
 
     const issuerConsoleUrl = React.useMemo(() => API_BASE_URLS.issuer, []);
+    const canManageCredentials = hasAnyRole(['holder', 'admin']);
 
     return (
-        <div className="flex h-full flex-col">
+        <RoleGuard allowedRoles={['holder', 'admin']}>
+            <div className="flex h-full flex-col">
             <header className="mb-6 flex flex-wrap items-center gap-3">
                 <div>
                     <h1 className="font-headline text-3xl font-bold">My Credentials</h1>
@@ -263,9 +327,13 @@ export default function CredentialsPage() {
                         variant="outline"
                         size="icon"
                         onClick={() => void loadCredentials()}
-                        disabled={loading}
+                        disabled={loading || isRefreshing}
                     >
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        {loading || isRefreshing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <RefreshCw className="h-4 w-4" />
+                        )}
                         <span className="sr-only">Refresh credentials</span>
                     </Button>
                     <Dialog
@@ -352,7 +420,10 @@ export default function CredentialsPage() {
                                                             <Button
                                                                 className="w-full"
                                                                 onClick={() => void handleAcceptOffer(offer.credential_exchange_id)}
-                                                                disabled={acceptingOfferId === offer.credential_exchange_id}
+                                                                disabled={
+                                                                    acceptingOfferId === offer.credential_exchange_id ||
+                                                                    !canManageCredentials
+                                                                }
                                                             >
                                                                 {acceptingOfferId === offer.credential_exchange_id ? (
                                                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -488,7 +559,7 @@ export default function CredentialsPage() {
                                     </Button>
                                     <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                            <Button variant="outline" size="icon">
+                                            <Button variant="outline" size="icon" disabled={!canManageCredentials}>
                                                 <Trash2 className="h-4 w-4" />
                                                 <span className="sr-only">Delete credential</span>
                                             </Button>
@@ -502,7 +573,10 @@ export default function CredentialsPage() {
                                             </AlertDialogHeader>
                                             <AlertDialogFooter>
                                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction onClick={() => void handleDeleteCredential(credential.credential_id)}>
+                                                <AlertDialogAction
+                                                    onClick={() => void handleDeleteCredential(credential.credential_id)}
+                                                    disabled={!canManageCredentials}
+                                                >
                                                     Delete credential
                                                 </AlertDialogAction>
                                             </AlertDialogFooter>
@@ -574,6 +648,7 @@ export default function CredentialsPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+            </div>
+        </RoleGuard>
     );
 }

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 
 import { AppHeader } from '@/components/common/app-header';
 import { AppSidebar } from '@/components/common/app-sidebar';
+import { RoleGuard } from '@/components/common/role-guard';
+import { RoleDebugPanel } from '@/components/common/role-debug-panel';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/auth-context';
 import { DashboardProvider } from '@/context/dashboard-context';
@@ -92,22 +94,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <DashboardProvider
-      value={{
-        notifications,
-        notificationsLoading,
-        refreshNotifications,
-        markNotificationAsRead: handleMarkNotificationAsRead,
-        markAllNotificationsAsRead: handleMarkAllNotificationsAsRead,
-      }}
+    <RoleGuard
+      allowedRoles={['holder', 'admin', 'issuer', 'verifier']}
+      fallback={(
+        <div className="flex h-screen items-center justify-center bg-secondary/50">
+          <div className="max-w-sm text-center">
+            <p className="text-lg font-semibold">Permission required</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Your account does not have access to the dashboard. Please contact an administrator to
+              update your permissions.
+            </p>
+          </div>
+        </div>
+      )}
     >
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset className="bg-secondary/50">
-          <AppHeader />
-          <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">{children}</main>
-        </SidebarInset>
-      </SidebarProvider>
-    </DashboardProvider>
+      <DashboardProvider
+        value={{
+          notifications,
+          notificationsLoading,
+          refreshNotifications,
+          markNotificationAsRead: handleMarkNotificationAsRead,
+          markAllNotificationsAsRead: handleMarkAllNotificationsAsRead,
+        }}
+      >
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset className="bg-secondary/50">
+            <AppHeader />
+            <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">{children}</main>
+          </SidebarInset>
+          <RoleDebugPanel />
+        </SidebarProvider>
+      </DashboardProvider>
+    </RoleGuard>
   );
 }
